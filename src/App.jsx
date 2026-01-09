@@ -203,7 +203,7 @@ function App() {
       </div>
 
       <div className="game">
-        <h1>🦖 Dino</h1>
+        <h1>🦖 Dinoooooooooooooooooooooooooooooooo</h1>
 
         <div
           ref={gameAreaRef}
