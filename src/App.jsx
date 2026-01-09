@@ -1,30 +1,31 @@
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import "./App.css";
 
 const SETTINGS = {
   GRAVITY: 0.6,
-  JUMP_FORCE: -12,
-  DUCK_GRAVITY: 1.5,
-  INITIAL_SPEED: 7,
-  SPEED_INC: 0.0015,
+  FLAP_FORCE: -8,
+  PIPE_SPEED: 3.5,
+  PIPE_SPAWN_RATE: 1500, // ms
+  PIPE_WIDTH: 52,
+  PIPE_GAP: 160,
 };
 
 function App() {
   const [score, setScore] = useState(0);
-  const [highScore, setHighScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
-  const [isNight, setIsNight] = useState(false);
 
-  const dinoRef = useRef();
-  const obstacleRef = useRef();
+  const birdRef = useRef();
   const gameLoopRef = useRef();
+  const pipesRef = useRef([]); // Stores pipe objects: { x, topHeight, id }
   
   const state = useRef({
-    y: 0, vy: 0, 
-    isJumping: false, isDucking: false,
-    obsX: 120, obsType: 'cactus', 
-    speed: SETTINGS.INITIAL_SPEED, distance: 0
+    y: 250,
+    vy: 0,
+    rotation: 0,
+    pipes: [],
+    lastPipeTime: 0,
+    score: 0
   });
 
   const startGame = () => {
@@ -32,91 +33,116 @@ function App() {
     setGameStarted(true);
     setScore(0);
     state.current = {
-      y: 0, vy: 0, isJumping: false, isDucking: false,
-      obsX: 120, obsType: 'cactus',
-      speed: SETTINGS.INITIAL_SPEED, distance: 0
+      y: 250, vy: 0, rotation: 0,
+      pipes: [], lastPipeTime: Date.now(), score: 0
     };
     gameLoopRef.current = requestAnimationFrame(update);
+  };
+
+  const flap = () => {
+    if (!gameStarted || gameOver) {
+      startGame();
+    } else {
+      state.current.vy = SETTINGS.FLAP_FORCE;
+    }
   };
 
   const update = () => {
     if (gameOver) return;
     const s = state.current;
 
-    // Physics
-    s.vy += s.isDucking ? SETTINGS.DUCK_GRAVITY : SETTINGS.GRAVITY;
+    // 1. Bird Physics
+    s.vy += SETTINGS.GRAVITY;
     s.y += s.vy;
-    if (s.y > 0) { s.y = 0; s.vy = 0; s.isJumping = false; }
+    s.rotation = Math.min(Math.PI / 4, Math.max(-Math.PI / 4, (s.vy * 0.1)));
 
-    // Movement
-    s.obsX -= s.speed;
-    s.speed += SETTINGS.SPEED_INC;
-    s.distance += 1;
-
-    if (s.obsX < -10) {
-      s.obsX = 100 + (Math.random() * 50);
-      s.obsType = (s.distance > 800 && Math.random() > 0.7) ? 'bird' : 'cactus';
+    // 2. Pipe Management
+    if (Date.now() - s.lastPipeTime > SETTINGS.PIPE_SPAWN_RATE) {
+      const minPipeHeight = 50;
+      const maxPipeHeight = 300;
+      const topHeight = Math.floor(Math.random() * (maxPipeHeight - minPipeHeight)) + minPipeHeight;
+      s.pipes.push({ x: 400, topHeight, id: Date.now(), passed: false });
+      s.lastPipeTime = Date.now();
     }
 
-    // High-Precision Collision
-    const d = dinoRef.current.getBoundingClientRect();
-    const o = obstacleRef.current.getBoundingClientRect();
-    const p = 12; // Hitbox padding
-    if (d.right-p > o.left+p && d.left+p < o.right-p && d.bottom-p > o.top+p && d.top+p < o.bottom-p) {
+    s.pipes.forEach(pipe => {
+      pipe.x -= SETTINGS.PIPE_SPEED;
+      // Scoring
+      if (!pipe.passed && pipe.x < 50) {
+        pipe.passed = true;
+        s.score += 1;
+        setScore(s.score);
+      }
+    });
+
+    // Remove off-screen pipes
+    s.pipes = s.pipes.filter(p => p.x > -SETTINGS.PIPE_WIDTH);
+
+    // 3. Collision Detection
+    const birdRect = birdRef.current.getBoundingClientRect();
+    const hitCeiling = s.y < 0;
+    const hitFloor = s.y > 480;
+
+    const hitPipe = s.pipes.some(pipe => {
+      const inXRange = 50 + 34 > pipe.x && 50 < pipe.x + SETTINGS.PIPE_WIDTH;
+      const inYRange = s.y < pipe.topHeight || s.y + 24 > pipe.topHeight + SETTINGS.PIPE_GAP;
+      return inXRange && inYRange;
+    });
+
+    if (hitCeiling || hitFloor || hitPipe) {
       setGameOver(true);
       return;
     }
 
-    // Sync Visuals
-    dinoRef.current.style.transform = `translateY(${s.y}px) scaleX(-1) scaleY(${s.isDucking ? 0.6 : 1})`;
-    obstacleRef.current.style.left = `${s.obsX}%`;
-    obstacleRef.current.style.bottom = s.obsType === 'bird' ? (s.distance % 200 > 100 ? '80px' : '40px') : '18px';
+    // 4. Sync Visuals
+    birdRef.current.style.transform = `translateY(${s.y}px) rotate(${s.rotation}rad)`;
     
-    const currentScore = Math.floor(s.distance / 10);
-    setScore(currentScore);
-    setIsNight(Math.floor(currentScore / 500) % 2 === 1);
-
     gameLoopRef.current = requestAnimationFrame(update);
   };
 
   useEffect(() => {
-    const handleKey = (e) => {
-      if (["Space", "ArrowUp"].includes(e.code)) { e.preventDefault(); if(!gameStarted || gameOver) startGame(); else if(!state.current.isJumping) { state.current.vy = SETTINGS.JUMP_FORCE; state.current.isJumping = true; } }
-      if (e.code === "ArrowDown") { e.preventDefault(); if(!state.current.isJumping) state.current.isDucking = true; }
-    };
-    const handleKeyUp = (e) => { if (e.code === "ArrowDown") state.current.isDucking = false; };
+    const handleKey = (e) => { if (e.code === "Space" || e.code === "ArrowUp") flap(); };
     window.addEventListener("keydown", handleKey);
-    window.addEventListener("keyup", handleKeyUp);
-    return () => { window.removeEventListener("keydown", handleKey); window.removeEventListener("keyup", handleKeyUp); cancelAnimationFrame(gameLoopRef.current); };
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      cancelAnimationFrame(gameLoopRef.current);
+    };
   }, [gameStarted, gameOver]);
 
   return (
-    <div className={`chrome-shell ${isNight ? 'night' : ''}`}>
-      <div className="game-container">
-        <div className="score">HI {highScore.toString().padStart(5, '0')} {score.toString().padStart(5, '0')}</div>
+    <div className="game-wrapper" onClick={flap}>
+      <div className="game-screen">
+        <div className="score-display">{score}</div>
         
-        <div className="world">
-          <div className="clouds" />
-          <div className="stars" />
-          <div className="horizon-line" />
-          
-          <div ref={dinoRef} className={`dino ${!state.current.isJumping && gameStarted ? 'running' : ''}`}>
-            <div className="dino-eye" />
-            🦖
-          </div>
-
-          <div ref={obstacleRef} className={`obstacle ${state.current.obsType}`}>
-            {state.current.obsType === 'cactus' ? '🌵' : '🕊️'}
-          </div>
-
-          {gameOver && (
-            <div className="overlay">
-              <div className="game-over-text">G A M E  O V E R</div>
-              <button className="restart-btn" onClick={startGame}>🔄</button>
-            </div>
-          )}
-          {!gameStarted && <div className="start-msg">PRESS SPACE TO RUN</div>}
+        {/* Bird */}
+        <div ref={birdRef} className="bird">
+          <div className="wing"></div>
+          🟡
         </div>
+
+        {/* Pipes */}
+        {state.current.pipes.map(pipe => (
+          <React.Fragment key={pipe.id}>
+            <div 
+              className="pipe pipe-top" 
+              style={{ left: pipe.x, height: pipe.topHeight, width: SETTINGS.PIPE_WIDTH }}
+            />
+            <div 
+              className="pipe pipe-bottom" 
+              style={{ 
+                left: pipe.x, 
+                top: pipe.topHeight + SETTINGS.PIPE_GAP,
+                height: 600, // Overflowing height
+                width: SETTINGS.PIPE_WIDTH 
+              }}
+            />
+          </React.Fragment>
+        ))}
+
+        {!gameStarted && <div className="overlay">TAP TO START</div>}
+        {gameOver && <div className="overlay">GAME OVER<br/><span>Tap to Restart</span></div>}
+        
+        <div className="ground"></div>
       </div>
     </div>
   );
