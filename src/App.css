@@ -1,153 +1,140 @@
 :root {
-  --ground: #5d4037;
-  --sky: #87ceeb;
+  --bg-color: #f7f7f7;
+  --text-color: #535353;
+  --horizon: #dbdbdb;
 }
 
 body {
   margin: 0;
-  background: #222;
   display: flex;
   justify-content: center;
   align-items: center;
   height: 100vh;
+  background-color: #e0e0e0;
   font-family: 'Courier New', Courier, monospace;
-}
-
-.game-container {
-  position: relative;
-  width: 800px;
-  height: 400px;
-  background: var(--sky);
-  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
 }
 
-.game-card {
+.stage {
+  width: 800px;
+  height: 250px;
+  background-color: var(--bg-color);
   position: relative;
-  z-index: 2;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
+  transition: background-color 1s, filter 1s;
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
 }
 
-.header {
-  padding: 20px;
-  display: flex;
-  justify-content: space-between;
-  color: #333;
+.stage.night {
+  background-color: #202124;
+  filter: invert(0);
 }
 
-.score-board span {
-  margin-left: 20px;
-  font-weight: bold;
+.stage.night .score-panel, .stage.night h1 {
+  color: #fff;
 }
 
-.game-area {
-  flex-grow: 1;
-  position: relative;
-  cursor: pointer;
-}
-
-.ground-line {
+.score-panel {
   position: absolute;
-  bottom: 50px;
+  top: 10px;
+  right: 20px;
+  color: var(--text-color);
+  font-size: 18px;
+  letter-spacing: 2px;
+}
+
+.game-world {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.horizon {
+  position: absolute;
+  bottom: 20px;
   width: 100%;
   height: 2px;
-  background: var(--ground);
+  background: var(--horizon);
 }
 
-.dino {
+/* DINO */
+.dino-sprite {
   position: absolute;
   left: 50px;
-  font-size: 50px;
-  line-height: 1;
+  bottom: 22px; /* Sits on horizon */
+  font-size: 45px;
+  width: 44px;
+  height: 47px;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s;
 }
 
-.running {
-  animation: wobble 0.2s infinite;
+.walking {
+  animation: step 0.2s infinite;
 }
 
-@keyframes wobble {
-  0% { transform: rotate(0deg); }
-  50% { transform: rotate(5deg) translateY(-2px); }
-  100% { transform: rotate(0deg); }
+@keyframes step {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+/* OBSTACLES */
+.obstacle {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .cactus {
-  position: absolute;
-  bottom: 50px;
   font-size: 40px;
-  line-height: 1;
+  bottom: 20px;
 }
 
-.overlay {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  background: rgba(255,255,255,0.8);
-  padding: 20px;
-  border-radius: 10px;
+.bird {
+  font-size: 35px;
+  animation: flap 0.3s infinite;
 }
 
-.game-over-overlay {
+@keyframes flap {
+  0% { transform: scaleY(1); }
+  50% { transform: scaleY(0.8) translateY(-5px); }
+}
+
+/* UI ELEMENTS */
+.game-over {
   position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: rgba(255,255,255,0.1);
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   z-index: 100;
 }
 
-.modal {
-  background: white;
-  padding: 30px;
-  border-radius: 15px;
-  text-align: center;
+.game-over h1 {
+  letter-spacing: 5px;
+  color: var(--text-color);
 }
 
-.modal h1 { margin: 0; color: #d32f2f; }
-
-button {
-  margin-top: 15px;
-  padding: 10px 25px;
-  font-size: 18px;
-  background: #4caf50;
-  color: white;
+.game-over button {
+  background: none;
   border: none;
-  border-radius: 5px;
+  font-size: 40px;
   cursor: pointer;
 }
 
-/* Background Elements */
-.sun {
-  position: absolute;
-  top: 40px;
-  right: 60px;
-  width: 60px;
-  height: 60px;
-  background: #ffeb3b;
-  border-radius: 50%;
-  box-shadow: 0 0 30px #fff176;
-}
-
-.cloud {
-  position: absolute;
-  background: white;
-  height: 20px;
-  width: 60px;
-  border-radius: 20px;
-  opacity: 0.6;
-}
-
-.cloud-1 { top: 60px; left: 100px; animation: float 20s linear infinite; }
-.cloud-2 { top: 100px; right: 100px; animation: float 30s linear infinite reverse; }
-
-@keyframes float {
-  from { transform: translateX(-100px); }
-  to { transform: translateX(800px); }
+.start-hint {
+    position: absolute;
+    width: 100%;
+    text-align: center;
+    top: 40%;
+    color: #888;
+    font-weight: bold;
 }
