@@ -5,10 +5,8 @@ const SETTINGS = {
   GRAVITY: 0.6,
   JUMP_FORCE: -12,
   DUCK_GRAVITY: 1.5,
-  GROUND_Y: 0,
   INITIAL_SPEED: 7,
-  SPEED_INC: 0.001,
-  SPAWN_INTERVAL: 1500,
+  SPEED_INC: 0.0015,
 };
 
 function App() {
@@ -16,40 +14,18 @@ function App() {
   const [highScore, setHighScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isNight, setIsNight] = useState(false);
 
-  // Game Engine Refs
-  const containerRef = useRef();
   const dinoRef = useRef();
   const obstacleRef = useRef();
   const gameLoopRef = useRef();
   
-  // Game State Refs (High performance)
   const state = useRef({
-    y: 0,
-    vy: 0,
-    isJumping: false,
-    isDucking: false,
-    obsX: 100,
-    obsType: 'cactus', // 'cactus' or 'bird'
-    birdY: 50,
-    speed: SETTINGS.INITIAL_SPEED,
-    distance: 0
+    y: 0, vy: 0, 
+    isJumping: false, isDucking: false,
+    obsX: 120, obsType: 'cactus', 
+    speed: SETTINGS.INITIAL_SPEED, distance: 0
   });
-
-  const jump = () => {
-    if (!gameStarted) return startGame();
-    if (gameOver) return startGame();
-    if (!state.current.isJumping && !state.current.isDucking) {
-      state.current.vy = SETTINGS.JUMP_FORCE;
-      state.current.isJumping = true;
-    }
-  };
-
-  const duck = (isDuck) => {
-    if (state.current.isJumping) return;
-    state.current.isDucking = isDuck;
-  };
 
   const startGame = () => {
     setGameOver(false);
@@ -57,7 +33,7 @@ function App() {
     setScore(0);
     state.current = {
       y: 0, vy: 0, isJumping: false, isDucking: false,
-      obsX: 120, obsType: 'cactus', birdY: 50,
+      obsX: 120, obsType: 'cactus',
       speed: SETTINGS.INITIAL_SPEED, distance: 0
     };
     gameLoopRef.current = requestAnimationFrame(update);
@@ -67,111 +43,80 @@ function App() {
     if (gameOver) return;
     const s = state.current;
 
-    // 1. Physics
+    // Physics
     s.vy += s.isDucking ? SETTINGS.DUCK_GRAVITY : SETTINGS.GRAVITY;
     s.y += s.vy;
+    if (s.y > 0) { s.y = 0; s.vy = 0; s.isJumping = false; }
 
-    if (s.y > SETTINGS.GROUND_Y) {
-      s.y = SETTINGS.GROUND_Y;
-      s.vy = 0;
-      s.isJumping = false;
-    }
-
-    // 2. Obstacle Movement
+    // Movement
     s.obsX -= s.speed;
     s.speed += SETTINGS.SPEED_INC;
     s.distance += 1;
 
     if (s.obsX < -10) {
-      s.obsX = 100 + (Math.random() * 30);
-      // Spawn bird only after score > 500
-      s.obsType = (s.distance > 500 && Math.random() > 0.7) ? 'bird' : 'cactus';
-      s.birdY = Math.random() > 0.5 ? 80 : 40; // High or low bird
+      s.obsX = 100 + (Math.random() * 50);
+      s.obsType = (s.distance > 800 && Math.random() > 0.7) ? 'bird' : 'cactus';
     }
 
-    // 3. Collision Logic
-    const dRect = dinoRef.current.getBoundingClientRect();
-    const oRect = obstacleRef.current.getBoundingClientRect();
-    
-    // Tight hitboxes
-    const padding = 10;
-    if (
-      dRect.right - padding > oRect.left + padding &&
-      dRect.left + padding < oRect.right - padding &&
-      dRect.bottom - padding > oRect.top + padding &&
-      dRect.top + padding < oRect.bottom - padding
-    ) {
+    // High-Precision Collision
+    const d = dinoRef.current.getBoundingClientRect();
+    const o = obstacleRef.current.getBoundingClientRect();
+    const p = 12; // Hitbox padding
+    if (d.right-p > o.left+p && d.left+p < o.right-p && d.bottom-p > o.top+p && d.top+p < o.bottom-p) {
       setGameOver(true);
       return;
     }
 
-    // 4. Sync UI
-    dinoRef.current.style.transform = `translateY(${s.y}px) scaleY(${s.isDucking ? 0.6 : 1})`;
+    // Sync Visuals
+    dinoRef.current.style.transform = `translateY(${s.y}px) scaleX(-1) scaleY(${s.isDucking ? 0.6 : 1})`;
     obstacleRef.current.style.left = `${s.obsX}%`;
-    if(s.obsType === 'bird') obstacleRef.current.style.bottom = `${s.birdY}px`;
-    else obstacleRef.current.style.bottom = `10px`;
+    obstacleRef.current.style.bottom = s.obsType === 'bird' ? (s.distance % 200 > 100 ? '80px' : '40px') : '18px';
     
-    setScore(Math.floor(s.distance / 10));
-    if (Math.floor(s.distance / 10) % 1000 === 0 && s.distance > 0) {
-        setIsDarkMode(prev => !prev);
-    }
+    const currentScore = Math.floor(s.distance / 10);
+    setScore(currentScore);
+    setIsNight(Math.floor(currentScore / 500) % 2 === 1);
 
     gameLoopRef.current = requestAnimationFrame(update);
   };
 
   useEffect(() => {
     const handleKey = (e) => {
-      if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); jump(); }
-      if (e.code === "ArrowDown") { e.preventDefault(); duck(true); }
+      if (["Space", "ArrowUp"].includes(e.code)) { e.preventDefault(); if(!gameStarted || gameOver) startGame(); else if(!state.current.isJumping) { state.current.vy = SETTINGS.JUMP_FORCE; state.current.isJumping = true; } }
+      if (e.code === "ArrowDown") { e.preventDefault(); if(!state.current.isJumping) state.current.isDucking = true; }
     };
-    const handleKeyUp = (e) => {
-      if (e.code === "ArrowDown") duck(false);
-    };
-
+    const handleKeyUp = (e) => { if (e.code === "ArrowDown") state.current.isDucking = false; };
     window.addEventListener("keydown", handleKey);
     window.addEventListener("keyup", handleKeyUp);
-    return () => {
-      window.removeEventListener("keydown", handleKey);
-      window.removeEventListener("keyup", handleKeyUp);
-      cancelAnimationFrame(gameLoopRef.current);
-    };
+    return () => { window.removeEventListener("keydown", handleKey); window.removeEventListener("keyup", handleKeyUp); cancelAnimationFrame(gameLoopRef.current); };
   }, [gameStarted, gameOver]);
 
   return (
-    <div className={`stage ${isDarkMode ? 'night' : 'day'}`}>
-      <div className="score-panel">
-        HI {highScore.toString().padStart(5, '0')} {score.toString().padStart(5, '0')}
-      </div>
-
-      <div className="game-world" ref={containerRef}>
-        <div className="horizon" />
+    <div className={`chrome-shell ${isNight ? 'night' : ''}`}>
+      <div className="game-container">
+        <div className="score">HI {highScore.toString().padStart(5, '0')} {score.toString().padStart(5, '0')}</div>
         
-        {/* Dino */}
-        <div 
-          ref={dinoRef} 
-          className={`dino-sprite ${state.current.isDucking ? 'ducking' : ''} ${!state.current.isJumping && gameStarted ? 'walking' : ''}`}
-        >
-          {state.current.isDucking ? '🦖' : '🦖'}
-        </div>
-
-        {/* Obstacle */}
-        <div 
-          ref={obstacleRef} 
-          className={`obstacle ${state.current.obsType}`}
-        >
-          {state.current.obsType === 'cactus' ? '🌵' : '🕊️'}
-        </div>
-
-        {gameOver && (
-          <div className="game-over">
-            <h1>G A M E  O V E R</h1>
-            <button onClick={startGame}>🔄</button>
+        <div className="world">
+          <div className="clouds" />
+          <div className="stars" />
+          <div className="horizon-line" />
+          
+          <div ref={dinoRef} className={`dino ${!state.current.isJumping && gameStarted ? 'running' : ''}`}>
+            <div className="dino-eye" />
+            🦖
           </div>
-        )}
 
-        {!gameStarted && (
-            <div className="start-hint">PRESS SPACE TO PLAY</div>
-        )}
+          <div ref={obstacleRef} className={`obstacle ${state.current.obsType}`}>
+            {state.current.obsType === 'cactus' ? '🌵' : '🕊️'}
+          </div>
+
+          {gameOver && (
+            <div className="overlay">
+              <div className="game-over-text">G A M E  O V E R</div>
+              <button className="restart-btn" onClick={startGame}>🔄</button>
+            </div>
+          )}
+          {!gameStarted && <div className="start-msg">PRESS SPACE TO RUN</div>}
+        </div>
       </div>
     </div>
   );
