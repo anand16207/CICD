@@ -2,243 +2,175 @@ import { useEffect, useState, useRef } from "react";
 import "./App.css";
 
 function App() {
-  const [isJumping, setIsJumping] = useState(false);
-  const [dinoBottom, setDinoBottom] = useState(0);
-  const [obstacleLeft, setObstacleLeft] = useState(100);
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
-  const [gameSpeed, setGameSpeed] = useState(2);
-  const [clouds, setClouds] = useState([
-    { id: 1, left: 20, speed: 0.5, size: 40 },
-    { id: 2, left: 60, speed: 0.3, size: 60 },
-    { id: 3, left: 85, speed: 0.4, size: 50 }
-  ]);
 
+  // Refs for high-performance updates (avoids React render lag)
   const gameAreaRef = useRef(null);
   const dinoRef = useRef(null);
   const obstacleRef = useRef(null);
-  const lastTimeRef = useRef(0);
-  const gameLoopRef = useRef(null);
-  const animationIdRef = useRef(null);
+  
+  // Game State Refs
+  const posRef = useRef({
+    dinoBottom: 0,
+    dinoVelocity: 0,
+    obstacleLeft: 100,
+    gameSpeed: 5,
+    isJumping: false,
+    score: 0
+  });
 
-  // Physics constants
-  const GRAVITY = 0.5;
-  const JUMP_FORCE = 15;
-  const INITIAL_SPEED = 2;
-  const SPEED_INCREMENT = 0.1;
-  const MAX_SPEED = 8;
+  const requestRef = useRef();
+  const lastTimeRef = useRef();
 
-  const dinoVelocity = useRef(0);
-  const isOnGround = useRef(true);
+  // Constants
+  const GRAVITY = 0.8;
+  const JUMP_FORCE = 16;
+  const GROUND_LEVEL = 0;
 
-  // Start game
-  const startGame = () => {
-    if (!gameStarted) {
-      setGameStarted(true);
-      setGameOver(false);
-      setScore(0);
-      setGameSpeed(INITIAL_SPEED);
-      setObstacleLeft(100);
-      setDinoBottom(0);
-      dinoVelocity.current = 0;
-      isOnGround.current = true;
-    }
-  };
-
-  // Jump
   const jump = () => {
     if (!gameStarted) {
       startGame();
       return;
     }
     if (gameOver) return;
-
-    if (isOnGround.current) {
-      isOnGround.current = false;
-      dinoVelocity.current = JUMP_FORCE;
-      setIsJumping(true);
+    if (!posRef.current.isJumping) {
+      posRef.current.isJumping = true;
+      posRef.current.dinoVelocity = JUMP_FORCE;
     }
   };
 
-  // Cloud animation
-  useEffect(() => {
-    if (!gameStarted || gameOver) return;
-
-    const animateClouds = () => {
-      setClouds(prev =>
-        prev.map(cloud => ({
-          ...cloud,
-          left: cloud.left <= -20 ? 120 : cloud.left - cloud.speed
-        }))
-      );
-      animationIdRef.current = requestAnimationFrame(animateClouds);
+  const startGame = () => {
+    setGameStarted(true);
+    setGameOver(false);
+    setScore(0);
+    posRef.current = {
+      dinoBottom: 0,
+      dinoVelocity: 0,
+      obstacleLeft: 100,
+      gameSpeed: 5,
+      isJumping: false,
+      score: 0
     };
-
-    animationIdRef.current = requestAnimationFrame(animateClouds);
-    return () => cancelAnimationFrame(animationIdRef.current);
-  }, [gameStarted, gameOver]);
-
-  // Main game loop
-  const gameLoop = (timestamp) => {
-    if (!gameStarted || gameOver) return;
-
-    const deltaTime = timestamp - lastTimeRef.current || 0;
-    lastTimeRef.current = timestamp;
-
-    // Dino physics
-    if (!isOnGround.current) {
-      dinoVelocity.current -= GRAVITY * (deltaTime / 16.67);
-      setDinoBottom(prev => {
-        const next = prev + dinoVelocity.current;
-        if (next <= 0) {
-          isOnGround.current = true;
-          setIsJumping(false);
-          dinoVelocity.current = 0;
-          return 0;
-        }
-        return next;
-      });
-    }
-
-    // Obstacle movement
-    setObstacleLeft(prev => {
-      const next = prev - gameSpeed * (deltaTime / 16.67);
-
-      if (next < -10) {
-        const newScore = score + 1;
-        setScore(newScore);
-        if (newScore > highScore) setHighScore(newScore);
-
-        if (newScore % 10 === 0 && gameSpeed < MAX_SPEED) {
-          setGameSpeed(s => Math.min(s + SPEED_INCREMENT, MAX_SPEED));
-        }
-        return 100 + Math.random() * 50;
-      }
-      return next;
-    });
-
-    gameLoopRef.current = requestAnimationFrame(gameLoop);
+    lastTimeRef.current = performance.now();
+    requestRef.current = requestAnimationFrame(gameLoop);
   };
 
-  // Keyboard controls
+  const gameLoop = (time) => {
+    if (gameOver) return;
+
+    const deltaTime = (time - lastTimeRef.current) / 16.67; // Normalize to 60fps
+    lastTimeRef.current = time;
+
+    const state = posRef.current;
+
+    // 1. Dino Physics
+    if (state.isJumping) {
+      state.dinoVelocity -= GRAVITY * deltaTime;
+      state.dinoBottom += state.dinoVelocity * deltaTime;
+
+      if (state.dinoBottom <= GROUND_LEVEL) {
+        state.dinoBottom = GROUND_LEVEL;
+        state.isJumping = false;
+        state.dinoVelocity = 0;
+      }
+    }
+
+    // 2. Obstacle Movement
+    state.obstacleLeft -= state.gameSpeed * deltaTime;
+    if (state.obstacleLeft < -5) {
+      state.obstacleLeft = 100 + Math.random() * 20; // Reset cactus
+      state.score += 1;
+      setScore(state.score);
+      state.gameSpeed += 0.1; // Slowly get faster
+    }
+
+    // 3. Update DOM directly for performance
+    if (dinoRef.current) dinoRef.current.style.bottom = `${state.dinoBottom + 50}px`;
+    if (obstacleRef.current) obstacleRef.current.style.left = `${state.obstacleLeft}%`;
+
+    // 4. Collision Detection (Hitbox Shrinking)
+    const dino = dinoRef.current.getBoundingClientRect();
+    const obs = obstacleRef.current.getBoundingClientRect();
+
+    // Shrink hitboxes by 15px to account for emoji whitespace
+    const padding = 15;
+    if (
+      dino.right - padding > obs.left + padding &&
+      dino.left + padding < obs.right - padding &&
+      dino.bottom - padding > obs.top + padding
+    ) {
+      handleGameOver();
+      return;
+    }
+
+    requestRef.current = requestAnimationFrame(gameLoop);
+  };
+
+  const handleGameOver = () => {
+    setGameOver(true);
+    if (posRef.current.score > highScore) setHighScore(posRef.current.score);
+    cancelAnimationFrame(requestRef.current);
+  };
+
   useEffect(() => {
-    const handleKey = (e) => {
-      if (["Space", "ArrowUp", "KeyW"].includes(e.code)) {
+    const handleKeyDown = (e) => {
+      if (e.code === "Space" || e.code === "ArrowUp") {
         e.preventDefault();
         jump();
       }
-      if (e.code === "KeyR" && gameOver) restart();
     };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [gameOver, gameStarted]);
-
-  // Start loop
-  useEffect(() => {
-    if (gameStarted && !gameOver) {
-      gameLoopRef.current = requestAnimationFrame(gameLoop);
-    }
-    return () => cancelAnimationFrame(gameLoopRef.current);
-  }, [gameStarted, gameOver]);
-
-  // Collision detection
-  useEffect(() => {
-    if (!gameStarted || gameOver) return;
-
-    const checkCollision = () => {
-      const dino = dinoRef.current?.getBoundingClientRect();
-      const obs = obstacleRef.current?.getBoundingClientRect();
-      const area = gameAreaRef.current?.getBoundingClientRect();
-      if (!dino || !obs || !area) return;
-
-      const dx = dino.left - area.left;
-      const dy = dino.bottom - area.top;
-
-      const ox = obs.left - area.left;
-      const oy = obs.top - area.top;
-
-      if (
-        dx < ox + obs.width - 5 &&
-        dx + dino.width > ox + 5 &&
-        dy > oy + 5 &&
-        dy - dino.height < oy + obs.height - 5
-      ) {
-        setGameOver(true);
-      }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      cancelAnimationFrame(requestRef.current);
     };
-
-    const interval = setInterval(checkCollision, 16);
-    return () => clearInterval(interval);
   }, [gameStarted, gameOver]);
-
-  const restart = () => {
-    setGameOver(false);
-    setGameStarted(true);
-    setScore(0);
-    setGameSpeed(INITIAL_SPEED);
-    setObstacleLeft(100);
-    setDinoBottom(0);
-    dinoVelocity.current = 0;
-    isOnGround.current = true;
-    setIsJumping(false);
-  };
 
   return (
     <div className="game-container">
       <div className="background">
         <div className="sun" />
-        {clouds.map(c => (
-          <div
-            key={c.id}
-            className="cloud"
-            style={{
-              left: `${c.left}%`,
-              width: `${c.size}px`,
-              height: `${c.size * 0.6}px`
-            }}
-          />
-        ))}
+        <div className="cloud cloud-1" />
+        <div className="cloud cloud-2" />
       </div>
 
-      <div className="game">
-        <h1>🦖 Dinoooooooooooooooooooooooooooooooo</h1>
+      <div className="game-card">
+        <div className="header">
+          <h2>🦖 DINO RUN</h2>
+          <div className="score-board">
+            <span>HI: {highScore}</span>
+            <span>SCORE: {score}</span>
+          </div>
+        </div>
 
-        <div
-          ref={gameAreaRef}
-          className="game-area"
-          onClick={jump}
-        >
+        <div className="game-area" onClick={jump}>
+          {!gameStarted && !gameOver && (
+            <div className="overlay">
+              <p>CLICK TO START</p>
+              <span>(OR PRESS SPACE)</span>
+            </div>
+          )}
+
           <div className="ground-line" />
-          <div className="ground-texture" />
-
-          {/* 🦖 EMOJI DINO */}
-          <div
-            ref={dinoRef}
-            className={`dino-character ${isJumping ? "jumping" : ""} ${isOnGround.current && !isJumping ? "running" : ""}`}
-            style={{ bottom: `${dinoBottom}px` }}
-          >
+          
+          <div ref={dinoRef} className={`dino ${posRef.current.isJumping ? "" : "running"}`}>
             🦖
           </div>
 
-          {/* 🌵 CACTUS */}
-          <div
-            ref={obstacleRef}
-            className="obstacle-cactus"
-            style={{ left: `${obstacleLeft}%` }}
-          >
-            <div className="cactus-main" />
+          <div ref={obstacleRef} className="cactus">
+            🌵
           </div>
         </div>
 
         {gameOver && (
           <div className="game-over-overlay">
-            <div className="game-over-modal">
-              <div className="game-over-icon">💥</div>
-              <h2>GAME OVER</h2>
+            <div className="modal">
+              <h1>CRASHED! 💥</h1>
               <p>Score: {score}</p>
-              <button className="btn-restart" onClick={restart}>🔄 Restart</button>
+              <button onClick={startGame}>RETRY</button>
             </div>
           </div>
         )}
